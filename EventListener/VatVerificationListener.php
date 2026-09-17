@@ -15,7 +15,6 @@ declare(strict_types=1);
 namespace SiretManagement\EventListener;
 
 use Psr\Log\LoggerInterface;
-use SiretManagement\SiretManagement;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Thelia\Core\Event\Address\AddressCreateOrUpdateEvent;
@@ -23,6 +22,7 @@ use Thelia\Core\Event\Cart\CartCheckoutEvent;
 use Thelia\Core\Event\Legal\VatNumberVerifiedEvent;
 use Thelia\Core\Event\TheliaEvents;
 use Thelia\Domain\Legal\Service\VatNumberVerifierInterface;
+use Thelia\Domain\Taxation\Enum\VatExemptionMode;
 use Thelia\Model\Address;
 use Thelia\Model\AddressQuery;
 use Thelia\Model\ConfigQuery;
@@ -39,12 +39,12 @@ use Thelia\Model\ConfigQuery;
  * that moment, so the address must already carry an up-to-date answer before
  * it is copied.
  */
-final class VatVerificationListener implements EventSubscriberInterface
+final readonly class VatVerificationListener implements EventSubscriberInterface
 {
     public function __construct(
-        private readonly VatNumberVerifierInterface $vatNumberVerifier,
-        private readonly EventDispatcherInterface $dispatcher,
-        private readonly LoggerInterface $logger,
+        private VatNumberVerifierInterface $vatNumberVerifier,
+        private EventDispatcherInterface $dispatcher,
+        private LoggerInterface $logger,
     ) {
     }
 
@@ -60,7 +60,10 @@ final class VatVerificationListener implements EventSubscriberInterface
             return;
         }
 
-        $address = AddressQuery::create()->findPk($addressId);
+        $address = AddressQuery::create()
+            ->filterByCustomerId($event->getCart()->getCustomerId())
+            ->filterById($addressId)
+            ->findOne();
         if (!$address instanceof Address) {
             return;
         }
@@ -70,7 +73,7 @@ final class VatVerificationListener implements EventSubscriberInterface
 
     private function verifyIfNeeded(Address $address): void
     {
-        if (!(bool) SiretManagement::getConfigValue(SiretManagement::VAT_API_CHECK_ENABLED, null)) {
+        if (VatExemptionMode::VERIFIED_VAT_NUMBER !== VatExemptionMode::fromShopConfiguration()) {
             return;
         }
 
