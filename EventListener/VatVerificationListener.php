@@ -78,11 +78,11 @@ final readonly class VatVerificationListener implements EventSubscriberInterface
         }
 
         $vatNumber = $address->getVatNumber();
-        if (null === $vatNumber || '' === $vatNumber || !$this->hasExpired($address)) {
+        if (null === $vatNumber || '' === $vatNumber || !$this->needsVerification($address)) {
             return;
         }
 
-        $countryIsoAlpha2 = $address->getCountry()?->getIsoalpha2();
+        $countryIsoAlpha2 = $address->getCountry()->getIsoalpha2();
         if (null === $countryIsoAlpha2) {
             return;
         }
@@ -104,12 +104,7 @@ final readonly class VatVerificationListener implements EventSubscriberInterface
         );
     }
 
-    /**
-     * True as long as no answer is recorded, or the last one is older than the
-     * shop's configured lifetime - never on every display, per
-     * Thelia\Domain\Taxation\Service\VatExemptionResolver's own aging rule.
-     */
-    private function hasExpired(Address $address): bool
+    private function needsVerification(Address $address): bool
     {
         $verifiedAt = $address->getVatVerifiedAt();
         if (null === $verifiedAt) {
