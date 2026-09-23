@@ -87,4 +87,29 @@ class VatExistenceCheckerFunctionalTest extends TestCase
 
         $this->assertFalse($result['success']);
     }
+
+    public function testCheckExistenceAgainstLiveViesForAnExistingNumber(): void
+    {
+        $outcome = $this->checker->checkExistence('FR40303265045');
+
+        $this->assertTrue($outcome['ok']);
+        $this->assertTrue($outcome['valid']);
+        $this->assertSame('SA SODIMAS', $outcome['name']);
+    }
+
+    public function testCheckExistenceAgainstLiveViesForANonExistingNumber(): void
+    {
+        $outcome = $this->checker->checkExistence('FR99999999999');
+
+        $this->assertTrue($outcome['ok']);
+        $this->assertFalse($outcome['valid']);
+    }
+
+    public function testCheckExistenceAgainstLiveViesForAnInvalidFormat(): void
+    {
+        $outcome = $this->checker->checkExistence('NOTAVALIDVATNUMBER');
+
+        $this->assertFalse($outcome['ok']);
+        $this->assertTrue($outcome['transient']);
+    }
 }

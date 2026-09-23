@@ -4,6 +4,7 @@
   "license": "GPL-3.0-or-later",
   "type": "thelia-module",
   "require": {
+    "thelia/core": "^3.2",
     "thelia/installer": "^1.6",
     "simondevelop/sirene": "^2.0",
     "symfony/http-client": "^6.4|^7.0"

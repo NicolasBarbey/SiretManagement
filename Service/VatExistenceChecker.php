@@ -214,6 +214,37 @@ final readonly class VatExistenceChecker
     }
 
     /**
+     * Answers whether VIES confirms, denies, or cannot say whether a VAT number
+     * exists, for SiretManagement\Service\VatNumberVerifier to translate into the
+     * core's three-state contract (Thelia\Domain\Legal\Service\VatNumberVerifierInterface).
+     *
+     * Unlike check(), never throws: an outage is reported as `ok: false,
+     * transient: true` rather than raised, since the contract requires an
+     * answer, not an exception.
+     *
+     * @return array{ok: bool, transient: bool, valid: bool, name: ?string}
+     */
+    public function checkExistence(string $vatNumber): array
+    {
+        $parsed = $this->parseVatNumber($vatNumber);
+        if (null === $parsed) {
+            // Out of VIES's scope (non-EU country, or a shape it never covers): no
+            // answer, not a refusal.
+            return ['ok' => false, 'transient' => true, 'valid' => false, 'name' => null];
+        }
+
+        [$countryCode, $number] = $parsed;
+        $result = $this->queryVies($countryCode, $number);
+
+        return [
+            'ok' => $result['ok'],
+            'transient' => $result['transient'],
+            'valid' => $result['valid'],
+            'name' => $result['name'],
+        ];
+    }
+
+    /**
      * @return array{0: string, 1: string}|null [countryCode, number] or null if not a recognizable EU VAT number
      */
     private function parseVatNumber(string $vatNumber): ?array
