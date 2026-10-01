@@ -308,6 +308,18 @@ final readonly class VatExistenceChecker
             ];
         }
 
+        $userError = $data['userError'] ?? null;
+
+        if (true !== ($data['valid'] ?? null) && \is_string($userError) && !\in_array($userError, ['VALID', 'INVALID'], true)) {
+            return [
+                'ok' => false,
+                'transient' => $this->isTransientError($userError),
+                'valid' => false,
+                'errorCode' => $userError,
+                'name' => null,
+            ];
+        }
+
         return [
             'ok' => true,
             'transient' => false,

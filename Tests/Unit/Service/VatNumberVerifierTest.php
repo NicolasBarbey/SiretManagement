@@ -11,6 +11,7 @@ use SiretManagement\Service\VatExistenceChecker;
 use SiretManagement\Service\VatNumberVerifier;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Thelia\Core\Translation\Translator;
 use Thelia\Domain\Legal\Enum\VatVerificationStatus;
@@ -31,7 +32,7 @@ class VatNumberVerifierTest extends TestCase
         $httpClient = new MockHttpClient([new MockResponse($body ?? '', ['http_code' => $httpCode])]);
         $checker = new VatExistenceChecker(new NullLogger(), new IntraCommunityVatChecker(), $httpClient);
 
-        return new VatNumberVerifier($checker);
+        return new VatNumberVerifier($checker, new ArrayAdapter());
     }
 
     public function testAMatchIsReportedAsVerifiedWithTheViesName(): void
@@ -74,6 +75,64 @@ class VatNumberVerifierTest extends TestCase
         $this->assertSame(VatVerificationStatus::REFUSED, $result->status);
     }
 
+    public function testANumberOfAnotherMemberStateIsRefusedWithoutAskingVies(): void
+    {
+        $calls = 0;
+        $httpClient = new MockHttpClient(static function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse((string) json_encode(['countryCode' => 'FR', 'vatNumber' => '40303265045', 'valid' => true, 'name' => 'SA SODIMAS']));
+        });
+        $verifier = new VatNumberVerifier(new VatExistenceChecker(new NullLogger(), new IntraCommunityVatChecker(), $httpClient), new ArrayAdapter());
+
+        $this->assertSame(VatVerificationStatus::REFUSED, $verifier->verify('FR40303265045', 'BE')->status);
+        $this->assertSame(0, $calls);
+    }
+
+    public function testAGreekNumberCarriesThePrefixEl(): void
+    {
+        $verifier = $this->makeVerifier(200, json_encode([
+            'countryCode' => 'EL',
+            'vatNumber' => '094014201',
+            'valid' => true,
+            'name' => 'ACME AE',
+        ]));
+
+        $this->assertSame(VatVerificationStatus::VERIFIED, $verifier->verify('EL094014201', 'GR')->status);
+    }
+
+    public function testARefusalIsRememberedRatherThanAskedAgain(): void
+    {
+        $calls = 0;
+        $httpClient = new MockHttpClient(static function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse((string) json_encode(['countryCode' => 'FR', 'vatNumber' => '99999999999', 'valid' => false]));
+        });
+        $verifier = new VatNumberVerifier(new VatExistenceChecker(new NullLogger(), new IntraCommunityVatChecker(), $httpClient), new ArrayAdapter());
+
+        for ($attempt = 0; $attempt < 5; ++$attempt) {
+            $this->assertSame(VatVerificationStatus::REFUSED, $verifier->verify('FR99999999999', 'FR')->status);
+        }
+
+        $this->assertSame(1, $calls);
+    }
+
+    public function testAMemberStateOutageReportedWithinAnAnswerIsUndeterminedAndNotRemembered(): void
+    {
+        $calls = 0;
+        $httpClient = new MockHttpClient(static function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse((string) json_encode(['countryCode' => 'FR', 'vatNumber' => '40303265045', 'valid' => false, 'userError' => 'MS_UNAVAILABLE']));
+        });
+        $verifier = new VatNumberVerifier(new VatExistenceChecker(new NullLogger(), new IntraCommunityVatChecker(), $httpClient), new ArrayAdapter());
+
+        $this->assertSame(VatVerificationStatus::UNDETERMINED, $verifier->verify('FR40303265045', 'FR')->status);
+        $this->assertSame(VatVerificationStatus::UNDETERMINED, $verifier->verify('FR40303265045', 'FR')->status);
+        $this->assertSame(2, $calls);
+    }
+
     public function testAServiceOutageIsReportedAsUndetermined(): void
     {
         $verifier = $this->makeVerifier(503, null);
@@ -99,7 +158,7 @@ class VatNumberVerifierTest extends TestCase
     {
         $verifier = $this->makeVerifier(200, null);
 
-        $result = $verifier->verify('NOTAVALIDVATNUMBER', 'FR');
+        $result = $verifier->verify('FRNOTAVALIDVATNUMBER', 'FR');
 
         $this->assertSame(VatVerificationStatus::UNDETERMINED, $result->status);
     }
